@@ -15,7 +15,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
 
-const repoRoot = dirname(fileURLToPath(import.meta.url));
+// The grader mounts the repository at MAKEFUN_BOT_DIR and does not promise
+// any particular working directory, so resolve the source tree from the
+// environment, falling back to this file's own directory — never from cwd.
+const repoRoot = process.env.MAKEFUN_BOT_DIR || dirname(fileURLToPath(import.meta.url));
 const outputDir = process.env.MAKEFUN_OUTPUT_DIR || '/output';
 
 // The caps the bounty's gate.json hands to buildDossier (see the header of
@@ -82,9 +85,15 @@ function main(): void {
   }
 
   // Start from a clean output directory so stale files can never leak into
-  // the hand-in and break the byte-for-byte dossier comparison.
-  rmSync(outputDir, { recursive: true, force: true });
+  // the hand-in and break the byte-for-byte dossier comparison. Empty the
+  // directory's contents rather than removing the directory itself: on the
+  // grader the output directory is a mounted volume, and removing a mount
+  // point (or a directory whose parent is a read-only root) fails the run
+  // with EBUSY/EROFS before any work happens.
   mkdirSync(outputDir, { recursive: true });
+  for (const entry of readdirSync(outputDir)) {
+    rmSync(join(outputDir, entry), { recursive: true, force: true });
+  }
 
   copyTreeSorted(gameDir, join(outputDir, 'game'));
   copyTreeSorted(shotsDir, join(outputDir, 'screenshots'));
